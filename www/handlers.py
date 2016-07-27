@@ -9,7 +9,7 @@ import markdown2
 
 from aiohttp import web
 
-from coroweb import get, post
+from web_frame import get, post
 from apis import Page, APIValueError, APIResourceNotFoundError, APIError
 
 from models import User, Interface, next_id
@@ -148,18 +148,22 @@ def signout(request):
     #清理掉cookie的用户信息数据
     r.set_cookie(COOKIE_NAME, '-deleted-', max_age=0, httponly=True)
     logging.info('user signed signout')
+    return r
 
 #注册请求
 @post('/api/users')
 def api_register_user(*, email, name, passwd):
+    logging.info('api_register_user...')
     #判断name是否存在，且是否'\n','\r','\t',' '这种特殊字符
-    if not name or name.strip():
+    if not name or not name.strip():
         raise APIValueError('name')
     #判断email是否存在，且符合格式
     if not email or not _RE_EMAIL.match(email):
+        logging.info('email api_register_user...')
         raise APIValueError('email')
     #判断passwd是否存在，且是否符合格式
-    if not passwd  or not _RE_EMAIL.match(passwd):
+    if not passwd  or not _RE_SHA1.match(passwd):
+        logging.info('passwd api_register_user...')
         raise APIValueError('passwd')
 
     #查一下库里是否有相同的email地址，如果有的话提示用户email已经被注册过
@@ -198,11 +202,12 @@ def api_register_user(*, email, name, passwd):
 
 @post('/api/authenticate')
 def authenticate(*, email, passwd):
+    logging.info("call authenticate---------------------")
     #如果email或passwd为空，都说明有错误
     if not email:
-        raise APIValueError('email', 'Invalid email')
+        raise APIValueError('email', 'Invalid empty email')
     if not passwd:
-        raise APIValueError('passwd', 'Invalid passwd')
+        raise APIValueError('passwd', 'Invalid empty passwd')
     #根据email在库里查找匹配的用户
     users = yield from User.findAll('email=?', [email])
     #没有找到用户，返回用户不存在
@@ -217,7 +222,7 @@ def authenticate(*, email, passwd):
     sha1.update(passwd.encode('utf-8'))
     #和库里的密码字段的值作比较，一样的话认证成功，不一样的话，认证失败
     if user.passwd != sha1.hexdigest():
-        raise APIValueError('passwd', 'Invalid passwd')
+        raise APIValueError('passwd', 'Invalid passwd match')
     #构建返回信息
     r = web.Response()
     #添加cookie
@@ -228,15 +233,123 @@ def authenticate(*, email, passwd):
     r.content_type = 'application/json'
     #把对象转换成json格式返回
     r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
+    return r
 
 
+#评论管理页面
+@get('/manage/')
+def manage():
+    return 'redirect:/manage/comments'
+
+@get('/manage/comments')
+def manage_comments(*, page='1'):
+    #查看所有评论
+    return {
+        '__template__':' manage_comments.html',
+        'page_index': get_page_index(page)
+    }
+
+@get('/api/comments')
+def api_comments(*, page='1'):
+    page_index = get_page_index(page)
+    num = yield from Comment.findNumber('count(id)')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, comments=())
+    comments = yield from Comment.findAll(orderBy='created_at desc', limit=(p.offset, p.limit))
+    return dict(page=p, comments=comments)
+
+@post('/api/interfaces/{id}/comments')
+def api_create_comment(id, request, *, content):
+    #对某个接口发表评论
+    user = request.__user__
+    #评论必须为登录状态下
+    if user is None:
+        raise APIPermissionError('content')
+    #评论不能为空
+    if not content or not content.strip():
+        raise APIValueError('content')
+    #查询接口id是否有对应接口
+    interface = yield from Interface.find(id)
+    if blog is None:
+        raise APIResourceNotFoundError('Interface')
+    #构建一条评论数据
+    comment = Comment(interface_id=interface.id, user_id=user.id, user_name=user.name, user_image=user.image, content=content.strip())
+    #保存到评论里
+    yield from comment.save()
+    return comment
 
 
+@post('/api/comments/{id}/delete')
+def api_delete_comments(id, request):
+    #delete a comment
+    logging.info(id)
+    #管理员检查
+    check_admin(request)
+    #查询评论id是否有评论
+    c = yield from Comment.find(id)
+    if c is None:
+        raise APIResourceNotFoundError('Comment')
+    yield from c.remove()
 
 
+###########用户管理##############
+@get('/show_all_users')
+def show_all_users():
+    #显示所有用户
+    users = yield from User.findAll()
+    logging.info('to index...')
 
+    return {
+        '__template__': 'test.html',
+        'users': users
+    }
 
+@get('/api/users')
+def api_get_users(request):
+    #返回所有用户信息的json格式
+    users = yield from User.findAll(orderBy='created_at desc')
+    logging.info('users = %s and type = %s' % (users, type(users)))
+    for u in users:
+        u.passwd = '******'
+    return dict(users=users)
 
+@get('/manage/users')
+def manage_users(*, page='1'):
+    #查看所有用户
+    return {
+        '__template__': 'manage_users.html',
+        'page_index': get_page_index(page)
+    }
+
+#################接口管理的处理函数################
+
+@get('/manage/interfaces/create')
+def manage_create_interfacer():
+    #创建接口页面
+    return {
+        '__template__': 'manage_interface_edit.html',
+        'id': '',
+        'action': 'api/interfaces'
+    }
+
+@get('/manage/interfaces')
+def manage_interfaces(*, page='1'):
+    return {
+        '__template__': 'manage_interfaces.html',
+        'page_index': get_page_index(page)
+    }
+
+@get('/api/interfacs')
+def api_interfaces(*, page='1'):
+    #获取接口信息
+    page_index = get_page_index(page)
+    num = yield from Interface.findNumber('count(id)')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, Interfaces=())
+    interfaces = yield from Interface.finaAll(orderBy='created_at desc', limit=(p.offset, p.limit))
+    return dict(page=p, ineterfaces=interfaces)
 
 
 

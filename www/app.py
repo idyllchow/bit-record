@@ -94,6 +94,7 @@ def response_factory(app, handler):
         r = yield from handler(request)
         logging.info('r = %s' % str(r))
         #如果响应结果为web.StreamResponse类，则直接把它作为响应返回
+        logging.info('-----------type r is------%s' % type(r))
         if isinstance(r, web.StreamResponse):
             return r
         #如果响应结果为字节流，则把字节流塞到response的body里，设置响应类型为流类型，返回

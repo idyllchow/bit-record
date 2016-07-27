@@ -136,7 +136,6 @@ class RequestHandler(object):  # 初始化一个请求处理类
 
             # ------阶段1：POST/GET方法下正确解析request的参数，包括位置参数和关键字参数----
             #
-            # POST提交请求的类型(通过content_type可以指定)可以参考我的博客：http://kaimingwan.com/post/python/postchang-jian-qing-qiu-fang-shi-qian-xi
             if request.method == 'POST':
                 # 判断是否村存在Content-Type（媒体格式类型），一般Content-Type包含的值：
                 # text/html;charset:utf-8;
@@ -163,6 +162,7 @@ class RequestHandler(object):  # 初始化一个请求处理类
                     for k, v in parse.parse_qs(qs, True).items():
                         kw[k] = v[0]
         if kw is None:  # 参数为空说明没有从Request对象中获取到必要参数
+            logging.info('can\'t get parameters from Request object')
             # Resource may have variable path also. For instance, a resource
             # with the path '/a/{name}/c' would match all incoming requests
             # with paths such as '/a/b/c', '/a/1/c', and '/a/etc/c'.
@@ -198,7 +198,7 @@ class RequestHandler(object):  # 初始化一个请求处理类
             for name in self._required_kw_args:
                 if name not in kw:
                     return web.HTTPBadRequest('Missing argument: %s' % name)
-        logging.info('call with args: %s' % str(kw))
+        logging.info('web frame call with args: %s' % str(kw))
         try:
             r = yield from self._func(**kw)
             return r
@@ -239,14 +239,13 @@ def add_routes(app, module_name):
     n = module_name.rfind('.')
     logging.info('n = %s', n)
     # 没有'.',则传入的是module名
-    # __import__方法使用说明请看：http://kaimingwan.com/post/python/python-de-nei-zhi-han-shu-__import__
     if n == (-1):
         mod = __import__(module_name, globals(), locals())
         logging.info('globals = %s', globals()['__name__'])
     else:
         # name = module_name[n+1:]
         # mod = getattr(__import__(module_name[:n], globals(), locals(), [name]), name)
-        # 上面两行是廖大大的源代码，但是把传入参数module_name的值改为'handlers.py'的话走这里是报错的，所以改成了下面这样
+        # 上面两行是廖的源代码，但是把传入参数module_name的值改为'handlers.py'的话走这里是报错的，所以改成了下面这样
         mod = __import__(module_name[:n], globals(), locals())
     # 遍历mod的方法和属性,主要是招处理方法
     # 由于我们定义的处理方法，被@get或@post修饰过，所以方法里会有'__method__'和'__route__'属性
