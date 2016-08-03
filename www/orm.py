@@ -28,6 +28,7 @@ def select(sql, args, size=None):
     global __pool
     with (yield from __pool) as conn:
         cur = yield from conn.cursor(aiomysql.DictCursor)
+        logging.info('-------cur------%s'% cur)
         yield from cur.execute(sql.replace('?', '%s'), args or ())
         if size:
             rs = yield from cur.fetchmany(size)
@@ -210,6 +211,16 @@ class Model(dict, metaclass=ModelMetaclass):
         if len(rs) == 0:
             return None
         return cls(**rs[0])
+
+    #@classmethod
+    #@asyncio.coroutine
+    #def findByCondition(cls, cn):
+    #    ' find object by condition. '
+    #    logging.info('============%s======%s======='% (cls.__select__, cls.__fields__.__name__))
+    #    rs = yield from select('%s where `%s`=?' % (cls.__select__, cls.__fields__), [cn], 1)
+    #    if len(rs) == 0:
+    #        return None
+    #    return cls(**rs[0])
 
     @asyncio.coroutine
     def save(self):
