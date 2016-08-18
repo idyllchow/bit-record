@@ -1,6 +1,6 @@
 aiohttp==0.20.2
 aiomysql==0.0.6
-athletelist==1.0.0
+athletelist==1.1.0
 beautifulsoup4==4.4.1
 chardet==2.3.0
 click==6.6
